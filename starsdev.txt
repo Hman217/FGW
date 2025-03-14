@@ -1,0 +1,118 @@
+NOTES:
+Victory Green Hex: #006847
+
+TO-DO:
+- Point Calculation
+	- Count where same as game results table DONE
+	- Overwrite submissions DONE
+	- Filter for time of submission vs Game start time
+	- 
+- Scoreboard Table Page DONE
+- Accounts
+- Automation
+	-Stars API to fill tables
+
+--API CALLS--
+SESON GAMES (INCLUDES WINNING GOAL SCORERS): https://api-web.nhle.com/v1/club-schedule-season/DAL/now
+
+
+
+-- Form DB Result Example --
+a:5:{s:16:"WPFormsDB_status";s:6:"unread";s:4:"Name";s:6:"Hayden";s:4:"Game";s:10:"2023-10-17";s:9:"Fist Goal";s:12:"J. Robertson";s:11:"Game Winner";s:12:"L. Stankoven";}
+
+-- Select Substring to parse data from DB Results --
+select 
+substring_index(substring_index(`wordpress`.`wp_wpforms_db`.`form_value`,'"',8),'"',-1) AS `Name`,
+substring_index(substring_index(`wordpress`.`wp_wpforms_db`.`form_value`,'"',12),'"',-1) AS `Game_Date`,
+substring_index(substring_index(`wordpress`.`wp_wpforms_db`.`form_value`,'"',16),'"',-1) AS `First_Goal`,
+substring_index(substring_index(`wordpress`.`wp_wpforms_db`.`form_value`,'"',20),'"',-1) AS `Game_Goal`,`wordpress`.`wp_wpforms_db`.`form_date` AS `form_date` from `wordpress`.`wp_wpforms_db`
+
+
+-- UPDATE STRING TO DATE --
+UPDATE Game_Schedule SET Game_Schedule.DATE = STR_TO_DATE(STR_DATE, '%m/%d/%Y');
+
+
+SELECT NAME, `NHL_Game_Results`.`Game_Date`,
+(SELECT COUNT(SELECT `VW_Picks`.`First_Goal` FROM VW_PicksInner INNER Join `NHL_Game_Results` 
+ON `VW_Picks`.`First_Goal` = `NHL_Game_Results`.`First_Goal`))
+
+
+
+SELECT Name, 
+CASE 
+	WHEN Player_First_Goal COLLATE utf8mb4_unicode_520_ci = First_Goal COLLATE utf8mb4_unicode_520_ci THEN 1 ELSE 0
+END AS First_Goal_Count,
+CASE 
+	WHEN Player_Game_Goal COLLATE utf8mb4_unicode_520_ci = Game_Goal COLLATE utf8mb4_unicode_520_ci THEN 1 ELSE 0
+END AS Game_Goal_Count,
+CASE 
+	WHEN Player_First_Goal COLLATE utf8mb4_unicode_520_ci = First_Goal COLLATE utf8mb4_unicode_520_ci AND Player_Game_Goal COLLATE utf8mb4_unicode_520_ci = Game_Goal COLLATE utf8mb4_unicode_520_ci THEN 3
+     ELSE First_Goal_Count + Game_Goal_Count
+END AS Game_Score
+FROM `VW_Pick_Join`;
+
+
+
+select `VW_Pick_Join`.`NAME` AS `Name`,
+case when `VW_Pick_Join`.`Player_First_Goal` collate utf8mb4_unicode_520_ci = `VW_Pick_Join`.`First_Goal` collate utf8mb4_unicode_520_ci then 1 else 0 
+end AS `First_Goal_Count`,
+case when `VW_Pick_Join`.`Player_Game_Goal` collate utf8mb4_unicode_520_ci = `VW_Pick_Join`.`Game_Goal` collate utf8mb4_unicode_520_ci then 1 else 0 
+end AS `Game_Goal_Count`,
+case when `VW_Pick_Join`.`Player_First_Goal` collate utf8mb4_unicode_520_ci = `VW_Pick_Join`.`First_Goal` collate utf8mb4_unicode_520_ci and `VW_Pick_Join`.`Player_Game_Goal` collate utf8mb4_unicode_520_ci = `VW_Pick_Join`.`Game_Goal` collate utf8mb4_unicode_520_ci then 3 
+else `VW_Pick_Join`.`Player_First_Goal` + `VW_Pick_Join`.`First_Goal`
+end AS `Game_Score` from `FGW`.`VW_Pick_Join`;
+
+
+
+
+
+/*
+Plugin Name: Custom API Data Importer
+*/
+
+// Function to fetch data from the API and insert into the database
+function fetch_and_insert_NHLapi_data() {
+    // Make API call
+    $api_url = 'https://api.example.com/data';
+    $response = wp_remote_get($api_url);
+
+    // Check if API call was successful
+    if (is_wp_error($response)) {
+        return;
+    }
+
+    // Parse API response
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    // Establish database connection
+    global $wpdb;
+
+    // Insert data into the database
+    foreach ($data as $item) {
+        $wpdb->insert(
+            $wpdb->prefix . 'NHL_API_DATA', // Replace 'your_table' with your actual table name
+            array(
+                'column1' => $item['field1'],
+                'column2' => $item['field2'],
+                // Map API response fields to table columns
+            )
+        );
+    }
+}
+
+// Hook the function to an action (e.g., when WordPress initializes)
+add_action('init', 'fetch_and_insert_NHLapi_data');
+
+
+
+
+
+
+-----SELECT JOIN PICKS AND USER LIST FOR AUTO-PICKS----
+
+SELECT `wp_users`.`ID`
+FROM `wp_users`
+LEFT JOIN FGW.VW_Picks
+ON `wp_users`.`ID` = FGW.VW_Picks.User_ID AND FGW.VW_Picks.Game_Date = '2024-04-09'
+WHERE FGW.VW_Picks.User_ID IS NULL;
